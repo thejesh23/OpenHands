@@ -538,7 +538,7 @@ describe("buildConfig", () => {
     expect(existsSync(path.join(config.stateDir, "tmux"))).toBe(false);
   });
 
-  it("lets --automation-git-ref win over an exported OH_AUTOMATION_LOCAL_PATH", async () => {
+  it("lets --automation-ref win over an exported OH_AUTOMATION_LOCAL_PATH", async () => {
     // Otherwise someone with the checkout exported in their shell profile
     // reproduces a bug against their own working tree while believing they
     // are testing the ref they just passed.
@@ -1625,6 +1625,42 @@ describe("dev-with-automation CLI", () => {
     expect(output).toContain("OH_AGENT_SERVER_LOCAL_PATH");
     expect(output).toContain("OPENHANDS_AUTOMATION_API_KEY");
     expect(output).toContain("SECRETS:");
+  });
+
+  it("only refers to flags that --help lists under OPTIONS", async () => {
+    // The launcher silently ignores unknown flags, so a flag name in the help
+    // text that it does not define is an override that never takes effect.
+    const child = spawn(
+      process.execPath,
+      ["scripts/dev-with-automation.mjs", "--help"],
+      {
+        cwd: repoRoot,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    let output = "";
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+
+    const [code] = await once(child, "exit");
+    expect(code).toBe(0);
+
+    const options = output.split(/^ENVIRONMENT VARIABLES:$/m)[0];
+    const listed = new Set(
+      [...options.matchAll(/^\s+(?:-\w, )?(--[a-z][a-z-]*)/gm)].map(
+        (match) => match[1],
+      ),
+    );
+    const referenced = new Set(
+      [...output.matchAll(/(?<![\w-])--[a-z][a-z-]*/g)].map(
+        (match) => match[0],
+      ),
+    );
+
+    expect(listed.size).toBeGreaterThan(0);
+    expect([...referenced].filter((flag) => !listed.has(flag))).toEqual([]);
   });
 
   it("fails fast with a clear error when OH_AGENT_SERVER_LOCAL_PATH is invalid", async () => {
